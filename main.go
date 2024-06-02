@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 	"strings"
+	"regexp"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -53,9 +54,19 @@ func processRSS(config Config, cache *Cache) error {
 
 		latestItem := cache.getLatestItem()
 
+
 		// Clean linebreak tags (is there a better way to do this through gofeed?)
 		cleanedContent := strings.ReplaceAll(feed.Items[0].Content, "<br />", "")
 		feed.Items[0].Content = cleanedContent
+
+		// Extract url from image source from Content
+		// TODO: grab search for all images
+		var imageURL string
+		re := regexp.MustCompile(`<img src="([^"]+)"`)
+		matches := re.FindStringSubmatch(feed.Items[0].Content)
+		if len(matches) > 1 {
+    		imageURL = matches[1]
+		}
 
 		log.Println("Feed Title:", feed.Title)
 		log.Println("Feed Description:", feed.Description)
@@ -65,8 +76,14 @@ func processRSS(config Config, cache *Cache) error {
 			newestItem := *feed.Items[0].PublishedParsed
 
 			if newestItem.After(latestItem) {
+				err := uploadImage(config, imageURL)
+				if err != nil {
+					log.Println("Misskeyの投稿をしくじりました...: / Failed to post to Misskey:", err)
+				} else {
+					log.Println("Misskeyに投稿しました。 translate to jp: / Uploaded Image:", feed.Items[0].Title)
+				}
 
-				err := postToMisskey(config, feed.Items[0])
+				err = postToMisskey(config, feed.Items[0])
 				if err != nil {
 					log.Println("Misskeyの投稿をしくじりました...: / Failed to post to Misskey:", err)
 					return err
@@ -92,12 +109,45 @@ func saveLatestItem(cache *Cache, published time.Time) {
 	cache.saveLatestItem(published)
 }
 
+func uploadImage(config Config, imageURL string) error {
+	note := map[string]interface{}{
+		"i":          config.AuthToken,
+		"url":       imageURL,
+	}
+
+	payload, err := json.Marshal(note)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("https://%s/api/drive/files/upload-from-url", config.MisskeyHost)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", config.AuthToken)
+
+	client := http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
+	}
+
+	return nil
+}
 func postToMisskey(config Config, item *gofeed.Item) error {
 
 	note := map[string]interface{}{
 		"i":          config.AuthToken,
 		"text":       fmt.Sprintf("%s", item.Content),
-		"visibility": "home",
+		"visibility": "public",
 	}
 
 	payload, err := json.Marshal(note)
@@ -122,7 +172,7 @@ func postToMisskey(config Config, item *gofeed.Item) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("MisskeyAPIと以下の理由で接続を確立できません: %d / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
+		return fmt.Errorf("MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
 	}
 
 	return nil
