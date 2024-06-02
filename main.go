@@ -90,7 +90,7 @@ func postToMisskey(config Config, item *gofeed.Item) error {
 
 	note := map[string]interface{}{
 		"i":          config.AuthToken,
-		"text":       fmt.Sprintf("新着ニュース！: %s\n%s", item.Title, item.Link),
+		"text":       fmt.Sprintf("%s\n%s", item.Title, item.Link),
 		"visibility": "home",
 	}
 
