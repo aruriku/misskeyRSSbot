@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sync"
 	"time"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -52,6 +53,10 @@ func processRSS(config Config, cache *Cache) error {
 
 		latestItem := cache.getLatestItem()
 
+		// Clean linebreak tags (is there a better way to do this through gofeed?)
+		cleanedContent := strings.ReplaceAll(feed.Items[0].Content, "<br />", "")
+		feed.Items[0].Content = cleanedContent
+
 		log.Println("Feed Title:", feed.Title)
 		log.Println("Feed Description:", feed.Description)
 		log.Println("Feed Link:", feed.Link)
@@ -91,7 +96,7 @@ func postToMisskey(config Config, item *gofeed.Item) error {
 
 	note := map[string]interface{}{
 		"i":          config.AuthToken,
-		"text":       fmt.Sprintf("%s\n%s", item.Title, item.Link),
+		"text":       fmt.Sprintf("%s", item.Content),
 		"visibility": "home",
 	}
 
