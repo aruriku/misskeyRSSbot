@@ -1,0 +1,13 @@
+# Example compose file
+services:
+  misskeyBOT:
+    container_name: misskeyBOT
+    image: misskeyBOT/docker
+    build:
+      dockerfile: ../dockerfile
+    environment:
+      - MISSKEY_HOST=misskey.instance
+      - AUTH_TOKEN=123456789ABCDEF
+      - RSS_URL="https://website.com/rss"
+
+
