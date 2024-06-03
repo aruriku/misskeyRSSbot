@@ -250,7 +250,7 @@ func main() {
 
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal(".envファイルの読み込みに失敗しました。入力した内容を確認してください。: / Failed to load .env file. Please check the input content:", err)
+		log.Println("No .env file... moving on to loading from environment variables.", err)
 	}
 
 	var config Config
