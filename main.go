@@ -10,8 +10,8 @@ import (
 	"time"
 	"strings"
 	"regexp"
-	"strconv"
-
+	"crypto/md5"
+	"io"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -55,14 +55,13 @@ func processRSS(config Config, cache *Cache) error {
 		}
 
 		latestItem := cache.getLatestItem()
-
+		var imageURL string
 
 		// Clean linebreak tags (is there a better way to do this through gofeed?)
 		cleanedContent := strings.ReplaceAll(feed.Items[0].Content, "<br />", "")
 
 		// Extract url from image source from Content
 		// TODO: grab search for all images
-		var imageURL string
 		re := regexp.MustCompile(`<img src="([^"]+)"`)
 		matches := re.FindStringSubmatch(feed.Items[0].Content)
 		if len(matches) > 1 {
@@ -76,10 +75,6 @@ func processRSS(config Config, cache *Cache) error {
 		feed.Items[0].Content = cleanedContent
 
 
-		// TODO: extract md5 hash and use find-by-hash for deduplication of potential images
-		imageComment := strconv.FormatInt(time.Now().Unix(), 10) // give the file a name so we can find it later.
-
-		log.Println("image comment:", imageComment)
 		log.Println("Feed Title:", feed.Title)
 		log.Println("Feed Description:", feed.Description)
 		log.Println("Feed Link:", feed.Link)
@@ -89,13 +84,14 @@ func processRSS(config Config, cache *Cache) error {
 			var imageID string
 
 			if newestItem != latestItem {
-				err := uploadImage(config, imageURL, imageComment)
+				log.Println("image url:", imageURL)
+				err := UploadImage(config, imageURL)
 				if err != nil {
 					log.Println("Misskeyへの画像アップロードに失敗しました... / Failed to upload image to Misskey:", err)
 				} else {
 					log.Println("Uploaded image")
 					log.Println("searching image...")
-					imageID, err = SearchForImage(config, imageComment)
+					imageID, err = SearchForImage(config, imageURL)
 					log.Println("Image ID:", imageID)
 					if err != nil {
 						log.Println("画像の検索に失敗しました / Failed to search for image:", err)
@@ -129,19 +125,35 @@ func saveLatestItem(cache *Cache, id string) {
 	cache.saveLatestItem(id)
 }
 
-func SearchForImage(config Config, comment string) (string, error) {
+
+func SearchForImage(config Config, imageURL string) (string, error) {
+
+	// put md5 processing in its own helper function
+	resp, err := http.Get(imageURL)
+	if err != nil {
+		return "0", err
+	}
+	defer resp.Body.Close()
+
+	hash := md5.New()
+	if _, err := io.Copy(hash, resp.Body); err != nil {
+		return "0", err
+	}
+	hashInBytes := hash.Sum(nil)[:16]
+	md5Hash := fmt.Sprintf("%x", hashInBytes)
+
 	note := map[string]interface{}{
 		"i":          config.AuthToken,
-		"name":       "unnamed.webp", // hard-coded because it's required and you can't upload from url with a name
-		"comment":	  comment,
+		"md5":       md5Hash,
 	}
+
 
 	payload, err := json.Marshal(note)
 	if err != nil {
 		return "0", err
 	}
 
-	url := fmt.Sprintf("https://%s/api/drive/files/find", config.MisskeyHost)
+	url := fmt.Sprintf("https://%s/api/drive/files/find-by-hash", config.MisskeyHost)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
 		return "0", err
@@ -151,7 +163,7 @@ func SearchForImage(config Config, comment string) (string, error) {
 	req.Header.Set("Authorization", config.AuthToken)
 
 	client := http.Client{}
-	resp, err := client.Do(req)
+	resp, err = client.Do(req)
 	if err != nil {
 		return "0", err
 	}
@@ -173,12 +185,13 @@ func SearchForImage(config Config, comment string) (string, error) {
 	}
 	return "0", err
 }
-
-func uploadImage(config Config, imageURL, comment string) error {
+// TODO: validate image existance and delete if already exists
+func UploadImage(config Config, imageURL string) error {
 	note := map[string]interface{}{
 		"i":          config.AuthToken,
 		"url":       imageURL,
-		"comment":    comment,
+		//"force":	  true, //uncomment if it does not change the image next post
+		// then work on deduplication of images by finding the hash
 	}
 
 	payload, err := json.Marshal(note)
@@ -202,7 +215,7 @@ func uploadImage(config Config, imageURL, comment string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 204 {
+	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("(UploadImage) MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
 	}
 
@@ -216,6 +229,7 @@ func postToMisskey(config Config, item *gofeed.Item, imageID string) error {
 		"visibility": "public",
 		"fileIds":	  []string{imageID},
 	}
+
 
 	payload, err := json.Marshal(note)
 	if err != nil {
@@ -263,7 +277,7 @@ func main() {
 
 	//RSSを取得する間隔です。今回は結構頻繁に更新される事例を想定して短めに持たせているけど、NHKとかだと５分スパンで十分です。/ This is the interval for retrieving RSS. This time, it is set short assuming a case that is updated quite frequently, but for something like NHK, a 5-minute span is sufficient.
 	//分数で指定する場合はtime.Minuteに書き換えてください。 / If specifying in minutes, change to time.Minute.
-	interval := 15 * time.Minute
+	interval := 5 * time.Second
 	ticker := time.NewTicker(interval)
 
 	for {
