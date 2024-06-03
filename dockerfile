@@ -3,5 +3,5 @@ WORKDIR /docker
 COPY go.mod go.sum ./
 RUN go mod download
 COPY main.go ./
-RUN go build main.go
-CMD ["/misskeyBOT"]
+RUN go build
+CMD ["./misskeyBOT"]

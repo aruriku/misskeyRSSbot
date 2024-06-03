@@ -2,12 +2,13 @@
 services:
   misskeyBOT:
     container_name: misskeyBOT
-    image: misskeyBOT/docker
+    image: misskeybot
     build:
-      dockerfile: ../dockerfile
+      context: .
+      dockerfile: ./dockerfile
     environment:
       - MISSKEY_HOST=misskey.instance
       - AUTH_TOKEN=123456789ABCDEF
-      - RSS_URL="https://website.com/rss"
+      - RSS_URL=https://website.com/rss
 
 
