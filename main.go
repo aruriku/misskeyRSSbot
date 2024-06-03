@@ -30,19 +30,19 @@ type MisskeyNote struct {
 
 type Cache struct {
 	mu         sync.RWMutex
-	latestItem time.Time
+	latestItem string
 }
 
-func (c *Cache) getLatestItem() time.Time {
+func (c *Cache) getLatestItem() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.latestItem
 }
 
-func (c *Cache) saveLatestItem(published time.Time) {
+func (c *Cache) saveLatestItem(GUID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.latestItem = published
+	c.latestItem = GUID
 }
 
 func processRSS(config Config, cache *Cache) error {
@@ -84,11 +84,11 @@ func processRSS(config Config, cache *Cache) error {
 		log.Println("Feed Description:", feed.Description)
 		log.Println("Feed Link:", feed.Link)
 
-		if len(feed.Items) > 0 && feed.Items[0].PublishedParsed != nil {
-			newestItem := *feed.Items[0].PublishedParsed
+		if len(feed.Items) > 0 && feed.Items[0].GUID != "" {
+			newestItem := feed.Items[0].GUID
 			var imageID string
 
-			if newestItem.After(latestItem) {
+			if newestItem != latestItem {
 				err := uploadImage(config, imageURL, imageComment)
 				if err != nil {
 					log.Println("Misskeyへの画像アップロードに失敗しました... / Failed to upload image to Misskey:", err)
@@ -119,14 +119,14 @@ func processRSS(config Config, cache *Cache) error {
 	return nil
 }
 
-func getLatestItem(cache *Cache) time.Time {
+func getLatestItem(cache *Cache) string {
 
 	return cache.getLatestItem()
 }
 
-func saveLatestItem(cache *Cache, published time.Time) {
+func saveLatestItem(cache *Cache, id string) {
 
-	cache.saveLatestItem(published)
+	cache.saveLatestItem(id)
 }
 
 func SearchForImage(config Config, comment string) (string, error) {
