@@ -91,21 +91,21 @@ func processRSS(config Config, cache *Cache) error {
 			if newestItem.After(latestItem) {
 				err := uploadImage(config, imageURL, imageComment)
 				if err != nil {
-					log.Println("Misskeyの投稿をしくじりました...: / Failed to upload image to Misskey:", err)
+					log.Println("Misskeyへの画像アップロードに失敗しました... / Failed to upload image to Misskey:", err)
 				} else {
 					log.Println("Uploaded image")
 					log.Println("searching image...")
 					imageID, err = SearchForImage(config, imageComment)
 					log.Println("Image ID:", imageID)
 					if err != nil {
-						log.Println("Failed to search for image:", err)
+						log.Println("画像の検索に失敗しました / Failed to search for image:", err)
 						return err
 					}
 				}
 
 				err = postToMisskey(config, feed.Items[0], imageID)
 				if err != nil {
-					log.Println("Misskeyの投稿をしくじりました...: / Failed to post to Misskey:", err)
+					log.Println("Misskeyの投稿をしくじりました... / Failed to post to Misskey:", err)
 					return err
 				} else {
 					log.Println("Misskeyに投稿しました。: / Posted to Misskey:", feed.Items[0].Title)
@@ -158,7 +158,7 @@ func SearchForImage(config Config, comment string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "0", fmt.Errorf("MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
+		return "0", fmt.Errorf("(SearchForImage) MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
 	}
 
 	var response []struct {
@@ -203,7 +203,7 @@ func uploadImage(config Config, imageURL, comment string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 204 {
-		return fmt.Errorf("MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
+		return fmt.Errorf("(UploadImage) MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
 	}
 
 	return nil
@@ -239,7 +239,7 @@ func postToMisskey(config Config, item *gofeed.Item, imageID string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
+		return fmt.Errorf("(PostToMisskey) MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
 	}
 
 	return nil
@@ -250,7 +250,7 @@ func main() {
 
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("No .env file... moving on to loading from environment variables.", err)
+		log.Println(".envファイルがありません...環境変数から読み込みを続行します。 / No .env file... moving on to loading from environment variables.", err)
 	}
 
 	var config Config
@@ -272,7 +272,7 @@ func main() {
 			log.Println("最新のRSS情報を取得しています / Retrieving the latest RSS information")
 			errProcessRSS := processRSS(config, cache)
 			if errProcessRSS != nil {
-				log.Println("RSSの取得に失敗しました...: / Failed to retrieve RSS:", errProcessRSS)
+				log.Println("RSSの取得に失敗しました... / Failed to retrieve RSS:", errProcessRSS)
 			}
 			log.Println("最新のRSS情報を取得しました / Retrieved the latest RSS information")
 		}
