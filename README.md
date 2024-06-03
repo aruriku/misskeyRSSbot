@@ -1,3 +1,7 @@
+### Disclaimer: 
+This fork has specific changes to suite a specific use. For general use, please use the original instead.
+
+
 # Misskey RSS BOT
 A simple BOT tool to post the latest news obtained via RSS to Misskey🐈‍⬛💻
 
@@ -11,9 +15,14 @@ A simple BOT tool to post the latest news obtained via RSS to Misskey🐈‍⬛�
 ## Deploy
 
 You can use tmux or systemd to run the program in the background.
-If you want to use vercel or koyeb, please change code in `main.go`
 
-Currently,it loads `.env` as a file, but the services like Vercel or above are loads the environment directly, so please modify it accordingly.
+You can also use docker and docker-compose using the included dockerfile and example docker-compose.yml file.
+
+To run the container, run `docker-compose up -d`. This will run the bot as a daemon in the background.
+You may need to build the image. If so, just add `--build` to your command.
+
+
+You can use a `.env` file to load your settings or set them as environment variables. The .env file takes precedence.
 
 
 ## Option
