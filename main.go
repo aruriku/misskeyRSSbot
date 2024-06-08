@@ -55,7 +55,11 @@ func processRSS(config Config, cache *Cache) error {
 		}
 
 		latestItem := cache.getLatestItem()
+
+		// maybe should be in a struct of its own now?
 		var imageURL string
+		var imageID string
+		includesImage := false
 
 		// Clean linebreak tags (is there a better way to do this through gofeed?)
 		cleanedContent := strings.ReplaceAll(feed.Items[0].Content, "<br />", "")
@@ -66,10 +70,24 @@ func processRSS(config Config, cache *Cache) error {
 		matches := re.FindStringSubmatch(feed.Items[0].Content)
 		if len(matches) > 1 {
     		imageURL = matches[1]
+			includesImage = true
 		}
-		// now clean the post of the url
+
+		// now clean the URL
 		re = regexp.MustCompile(`(<img[^>]+\>)|(<p>)|(</p>)`)
 		cleanedContent = re.ReplaceAllString(cleanedContent, "")
+
+		// Regex pattern to match <a> tags and capture the href content
+		re = regexp.MustCompile(`<a[^>]*href="([^"]+)"[^>]*>([^<]*)</a>`)
+
+		// Replace the matched <a> tags with the content of the href attribute
+		cleanedContent = re.ReplaceAllStringFunc(cleanedContent, func(m string) string {
+			matches = re.FindStringSubmatch(m)
+			if len(matches) > 1 {
+				return matches[1]
+			}
+			return m
+		})
 
 		//assign the cleaned post
 		feed.Items[0].Content = cleanedContent
@@ -81,32 +99,42 @@ func processRSS(config Config, cache *Cache) error {
 
 		if len(feed.Items) > 0 && feed.Items[0].GUID != "" {
 			newestItem := feed.Items[0].GUID
-			var imageID string
+			
 
 			if newestItem != latestItem {
-				log.Println("image url:", imageURL)
-				err := UploadImage(config, imageURL)
-				if err != nil {
-					log.Println("Misskeyへの画像アップロードに失敗しました... / Failed to upload image to Misskey:", err)
-				} else {
-					log.Println("Uploaded image")
-					log.Println("searching image...")
-					imageID, err = SearchForImage(config, imageURL)
-					log.Println("Image ID:", imageID)
+				if includesImage == true {
+					log.Println("image url:", imageURL)
+				
+					err := UploadImage(config, imageURL)
 					if err != nil {
-						log.Println("画像の検索に失敗しました / Failed to search for image:", err)
-						return err
+						log.Println("Misskeyへの画像アップロードに失敗しました... / Failed to upload image to Misskey:", err)
+					} else {
+						log.Println("Uploaded image")
+						log.Println("searching image...")
+						imageID, err = SearchForImage(config, imageURL)
+						log.Println("Image ID:", imageID)
+						if err != nil {
+							log.Println("画像の検索に失敗しました / Failed to search for image:", err)
+							return err
+						}
+						err = createPostWithImage(config, feed.Items[0], imageID)
+						if err != nil {
+							log.Println("Misskeyの投稿をしくじりました... / Failed to post to Misskey:", err)
+							return err
+						} else {
+							log.Println("Misskeyに投稿しました。: / Posted to Misskey:", feed.Items[0].Title)
+							cache.saveLatestItem(newestItem)
+						}
 					}
-				}
-
-				err = postToMisskey(config, feed.Items[0], imageID)
-				if err != nil {
-					log.Println("Misskeyの投稿をしくじりました... / Failed to post to Misskey:", err)
-					return err
 				} else {
-					log.Println("Misskeyに投稿しました。: / Posted to Misskey:", feed.Items[0].Title)
-
-					cache.saveLatestItem(newestItem)
+					err = createPost(config, feed.Items[0])
+					if err != nil {
+						log.Println("Misskeyの投稿をしくじりました... / Failed to post to Misskey:", err)
+						return err
+					} else {
+						log.Println("Misskeyに投稿しました。: / Posted to Misskey:", feed.Items[0].Title)
+						cache.saveLatestItem(newestItem)
+					}
 				}
 			}
 		}
@@ -221,15 +249,27 @@ func UploadImage(config Config, imageURL string) error {
 
 	return nil
 }
-func postToMisskey(config Config, item *gofeed.Item, imageID string) error {
-
+// could this be a struct? research
+func createPost(config Config, item *gofeed.Item) error {
 	note := map[string]interface{}{
 		"i":          config.AuthToken,
 		"text":       fmt.Sprintf("%s", item.Content),
 		"visibility": "public",
-		"fileIds":	  []string{imageID},
 	}
+	return postToMisskey(config, note)
+}
 
+func createPostWithImage(config Config, item *gofeed.Item, imageID string) error {
+	note := map[string]interface{}{
+		"i":          config.AuthToken,
+		"text":       fmt.Sprintf("%s", item.Content),
+		"visibility": "public",
+		"fileIds":    []string{imageID},
+	}
+	return postToMisskey(config, note)
+}
+
+func postToMisskey(config Config, note map[string]interface{}) error {
 
 	payload, err := json.Marshal(note)
 	if err != nil {
@@ -277,7 +317,7 @@ func main() {
 
 	//RSSを取得する間隔です。今回は結構頻繁に更新される事例を想定して短めに持たせているけど、NHKとかだと５分スパンで十分です。/ This is the interval for retrieving RSS. This time, it is set short assuming a case that is updated quite frequently, but for something like NHK, a 5-minute span is sufficient.
 	//分数で指定する場合はtime.Minuteに書き換えてください。 / If specifying in minutes, change to time.Minute.
-	interval := 15 * time.Minute
+	interval := 5 * time.Minute
 	ticker := time.NewTicker(interval)
 
 	for {
