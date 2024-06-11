@@ -328,7 +328,7 @@ func main() {
 
 	//RSSを取得する間隔です。今回は結構頻繁に更新される事例を想定して短めに持たせているけど、NHKとかだと５分スパンで十分です。/ This is the interval for retrieving RSS. This time, it is set short assuming a case that is updated quite frequently, but for something like NHK, a 5-minute span is sufficient.
 	//分数で指定する場合はtime.Minuteに書き換えてください。 / If specifying in minutes, change to time.Minute.
-	interval := 15 * time.Second
+	interval := 5 * time.Minute
 	ticker := time.NewTicker(interval)
 
 	for {
