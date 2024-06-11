@@ -62,14 +62,20 @@ func processRSS(config Config, cache *Cache) error {
 		includesImage := false
 
 		// Clean linebreak tags (is there a better way to do this through gofeed?)
-		cleanedContent := strings.ReplaceAll(feed.Items[0].Content, "<br />", "")
+		cleanedContent := strings.ReplaceAll(feed.Items[0].Description, "<br>", "\n")
+
+		// Remove replace quote with something more readable
+		// TODO: interface with the misskey api to search for a post and renote with it's ID, may need to configure search.
+		// or... do an expanded post with the quote renote?
+		cleanedContent = strings.ReplaceAll(cleanedContent, "<div class=\"rsshub-quote\">", "\n🔁 Quote:")
 
 		// Extract url from image source from Content
 		// TODO: grab search for all images
-		re := regexp.MustCompile(`<img src="([^"]+)"`)
-		matches := re.FindStringSubmatch(feed.Items[0].Content)
+		re := regexp.MustCompile(`<img[^>]+src="([^"]+)"`)
+		matches := re.FindStringSubmatch(feed.Items[0].Description)
 		if len(matches) > 1 {
     		imageURL = matches[1]
+			imageURL = strings.ReplaceAll(imageURL, "&amp;", "&") // clean out garbage in the url
 			includesImage = true
 		}
 
@@ -89,8 +95,13 @@ func processRSS(config Config, cache *Cache) error {
 			return m
 		})
 
+		// clean any remaining html tags
+		re = regexp.MustCompile(`<[^>]*>`)
+		cleanedContent = re.ReplaceAllString(cleanedContent, "")
+
+
 		//assign the cleaned post
-		feed.Items[0].Content = cleanedContent
+		feed.Items[0].Description = cleanedContent
 
 
 		log.Println("Feed Title:", feed.Title)
@@ -253,7 +264,7 @@ func UploadImage(config Config, imageURL string) error {
 func createPost(config Config, item *gofeed.Item) error {
 	note := map[string]interface{}{
 		"i":          config.AuthToken,
-		"text":       fmt.Sprintf("%s", item.Content),
+		"text":       fmt.Sprintf("%s", item.Description),
 		"visibility": "public",
 	}
 	return postToMisskey(config, note)
@@ -262,7 +273,7 @@ func createPost(config Config, item *gofeed.Item) error {
 func createPostWithImage(config Config, item *gofeed.Item, imageID string) error {
 	note := map[string]interface{}{
 		"i":          config.AuthToken,
-		"text":       fmt.Sprintf("%s", item.Content),
+		"text":       fmt.Sprintf("%s", item.Description),
 		"visibility": "public",
 		"fileIds":    []string{imageID},
 	}
@@ -317,7 +328,7 @@ func main() {
 
 	//RSSを取得する間隔です。今回は結構頻繁に更新される事例を想定して短めに持たせているけど、NHKとかだと５分スパンで十分です。/ This is the interval for retrieving RSS. This time, it is set short assuming a case that is updated quite frequently, but for something like NHK, a 5-minute span is sufficient.
 	//分数で指定する場合はtime.Minuteに書き換えてください。 / If specifying in minutes, change to time.Minute.
-	interval := 5 * time.Minute
+	interval := 15 * time.Second
 	ticker := time.NewTicker(interval)
 
 	for {
