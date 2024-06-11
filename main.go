@@ -63,6 +63,9 @@ func processRSS(config Config, cache *Cache) error {
 
 		// Clean linebreak tags (is there a better way to do this through gofeed?)
 		cleanedContent := strings.ReplaceAll(feed.Items[0].Description, "<br>", "\n")
+		
+		// Fix &amp which breaks links
+		cleanedContent = strings.ReplaceAll(cleanedContent, "&amp;", "&")
 
 		// Remove replace quote with something more readable
 		// TODO: interface with the misskey api to search for a post and renote with it's ID, may need to configure search.
@@ -75,7 +78,7 @@ func processRSS(config Config, cache *Cache) error {
 		matches := re.FindStringSubmatch(feed.Items[0].Description)
 		if len(matches) > 1 {
     		imageURL = matches[1]
-			imageURL = strings.ReplaceAll(imageURL, "&amp;", "&") // clean out garbage in the url
+			imageURL = strings.ReplaceAll(imageURL, "&amp;", "&") // clean out garbage in the url (redundant now, but left in just incase)
 			includesImage = true
 		}
 
