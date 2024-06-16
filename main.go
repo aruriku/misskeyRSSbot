@@ -76,9 +76,20 @@ func processRSS(config Config, cache *Cache) error {
 		var images []Image
 
 		// Extract url from image source from Content
-		// TODO: grab search for all images
 		re := regexp.MustCompile(`<img[^>]+src="([^"]+)"`)
 		matches := re.FindAllStringSubmatch(feed.Items[0].Description, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				imageURL := match[1]
+				imageURL = strings.ReplaceAll(imageURL, "&amp;", "&") // clean out garbage in the url (redundant now, but left in just incase)
+				includesImage = true
+				images = append(images, Image{URL: imageURL})
+			}
+		}
+
+		// parse videos as well, similar enough that code can just be copy and pasted with minimal edits
+		re = regexp.MustCompile(`<video[^>]+src="([^"]+)"`)
+		matches = re.FindAllStringSubmatch(feed.Items[0].Description, -1)
 		for _, match := range matches {
 			if len(match) > 1 {
 				imageURL := match[1]
@@ -131,9 +142,20 @@ func processRSS(config Config, cache *Cache) error {
 							log.Println("searching image...")
 							images[i].ID, err = SearchForImage(config, images[i].URL)
 							log.Println("Image ID:", images[i].ID)
+							// if err, return immediately. if it returns 0, wait a couple seconds and retry, then fail if it doesn't after that request as well
 							if err != nil {
 								log.Println("画像の検索に失敗しました / Failed to search for image:", err)
 								return err
+							}
+							if images[i].ID == "0" { // realistically an ID should never be 0 (though I've never actually confirmed if it's even possible!)
+								log.Println("画像が見つかりません… 3秒後に再試行します… / No image found... trying again after 3 seconds...")
+								time.Sleep(3 * time.Second)
+								images[i].ID, err = SearchForImage(config, images[i].URL)
+								log.Println("Image ID:", images[i].ID)
+								if images[i].ID == "0" || err != nil {
+									log.Println("画像の検索に失敗しました / Failed to search for image:", err)
+									return err
+								}
 							}
 						}
 					}
@@ -263,7 +285,7 @@ func UploadImage(config Config, imageURL string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("(UploadImage) MisskeyAPIと以下の理由で接続を確立できません / Failed to connect to Misskey API for the following reason: %d", resp.StatusCode)
+		return fmt.Errorf("(UploadImage) 以下の理由でMisskeyへの画像アップロードに失敗しました / Failed to upload image to Misskey for the following reason: %d", resp.StatusCode)
 	}
 
 	return nil
@@ -343,7 +365,7 @@ func main() {
 
 	//RSSを取得する間隔です。今回は結構頻繁に更新される事例を想定して短めに持たせているけど、NHKとかだと５分スパンで十分です。/ This is the interval for retrieving RSS. This time, it is set short assuming a case that is updated quite frequently, but for something like NHK, a 5-minute span is sufficient.
 	//分数で指定する場合はtime.Minuteに書き換えてください。 / If specifying in minutes, change to time.Minute.
-	interval := 5 * time.Minute
+	interval := 15 * time.Second
 	ticker := time.NewTicker(interval)
 
 	for {
